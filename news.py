@@ -7,9 +7,11 @@ Fetches Google News RSS feeds (no API key required, zero third-party deps).
 Tracks seen articles in seen_articles.json so only new articles appear each run.
 
 Usage:
-    python news.py
+    python news.py              # fetch and show new articles
+    python news.py --history    # browse previously viewed articles
 """
 
+import argparse
 import hashlib
 import json
 import sys
@@ -219,10 +221,70 @@ def _display(article: dict, index: int, total: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# History view
+# ---------------------------------------------------------------------------
+
+def _display_history_entry(entry: dict, index: int, total: int) -> None:
+    print()
+    print(_c(_BOLD, f"[{index}/{total}]  {entry['title']}"))
+    print(_c(_DIM, f"  {entry['source']}  ·  seen: {entry['seen_at_fmt']}"))
+
+
+def show_history() -> None:
+    seen = _load_seen()
+
+    if not seen:
+        print(_c(_DIM, f"\n  No history yet. Run without --history to fetch articles.\n"))
+        return
+
+    # Parse and sort by seen_at ascending (oldest first)
+    entries = []
+    for aid, data in seen.items():
+        try:
+            seen_at = datetime.fromisoformat(data["seen_at"]).astimezone(timezone.utc)
+        except (KeyError, ValueError):
+            seen_at = datetime.min.replace(tzinfo=timezone.utc)
+        entries.append({
+            "id":          aid,
+            "title":       data.get("title", "Unknown title"),
+            "source":      data.get("source", "Unknown"),
+            "seen_at":     seen_at,
+            "seen_at_fmt": seen_at.strftime("%b %d, %Y  %H:%M UTC") if seen_at != datetime.min.replace(tzinfo=timezone.utc) else "Unknown",
+        })
+
+    entries.sort(key=lambda x: x["seen_at"])
+
+    print(_c(_BOLD, f"\nViewed Articles History  —  {len(entries)} article(s)\n"))
+    _hr()
+
+    for i, entry in enumerate(entries, 1):
+        _display_history_entry(entry, i, len(entries))
+
+    print()
+    _hr()
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="News aggregator for BlackRock, Aladdin, private markets, Preqin, eFront.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help=f"Show all previously viewed articles in chronological order (from {SEEN_FILE}).",
+    )
+    args = parser.parse_args()
+
+    if args.history:
+        show_history()
+        return
+
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=DAYS_BACK)
     seen   = _load_seen()
 
